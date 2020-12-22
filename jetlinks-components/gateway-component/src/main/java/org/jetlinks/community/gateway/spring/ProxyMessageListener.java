@@ -79,35 +79,53 @@ class ProxyMessageListener implements MessageListener {
         if (Payload.class.isAssignableFrom(paramType)) {
             return message;
         }
-        if (paramType.equals(TopicMessage.class)) {
-            log.warn("TopicMessage已弃用,请替换为TopicPayload! {}", method);
-            return TopicMessageWrap.wrap(message);
-        }
-        Payload payload = message.getPayload();
-        Object decodedPayload;
-        if (payload instanceof NativePayload) {
-            decodedPayload = ((NativePayload<?>) payload).getNativeObject();
-        } else {
-            if (decoder == null) {
-                decoder = Codecs.lookup(resolvableType);
+        try {
+            if (paramType.equals(TopicMessage.class)) {
+                log.warn("TopicMessage已弃用,请替换为TopicPayload! {}", method);
+                return TopicMessageWrap.wrap(message);
             }
-            decodedPayload = decoder.decode(message);
+            Payload payload = message.getPayload();
+            Object decodedPayload;
+            if (payload instanceof NativePayload) {
+                decodedPayload = ((NativePayload<?>) payload).getNativeObject();
+            } else {
+                if (decoder == null) {
+                    decoder = Codecs.lookup(resolvableType);
+                }
+                decodedPayload = decoder.decode(message);
+            }
+            if (paramType.isInstance(decodedPayload)) {
+                return decodedPayload;
+            }
+            return FastBeanCopier.DEFAULT_CONVERT.convert(decodedPayload, paramType, resolvableType.resolveGenerics());
+        } finally {
+            message.release();
         }
-        if (paramType.isInstance(decodedPayload)) {
-            return decodedPayload;
-        }
-
-        return FastBeanCopier.DEFAULT_CONVERT.convert(decodedPayload, paramType, resolvableType.resolveGenerics());
     }
 
     @Override
     public Mono<Void> onMessage(TopicPayload message) {
-        return Mono.defer(() -> {
-            Object val = proxy.apply(target, paramType == Void.class ? null : convert(message));
-            if (val instanceof Publisher) {
-                return Mono.from((Publisher<?>) val).then();
+        try {
+            boolean paramVoid = paramType == Void.class;
+            try {
+                Object val = proxy.apply(target, paramVoid ? null : convert(message));
+                if (val instanceof Publisher) {
+                    return Mono.from((Publisher<?>) val).then();
+                }
+                return Mono.empty();
+            } finally {
+                if (paramVoid) {
+                    message.release();
+                }
             }
-            return Mono.empty();
-        });
+        } catch (Throwable e) {
+            log.error("invoke event listener [{}] error", toString(), e);
+        }
+        return Mono.empty();
+    }
+
+    @Override
+    public String toString() {
+        return ClassUtils.getUserClass(target).getSimpleName() + "." + method.getName();
     }
 }
