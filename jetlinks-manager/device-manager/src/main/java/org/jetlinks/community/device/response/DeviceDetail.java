@@ -5,6 +5,7 @@ import lombok.Getter;
 import lombok.Setter;
 import org.apache.commons.collections4.MapUtils;
 import org.jetlinks.community.device.enums.DeviceType;
+import org.jetlinks.core.Values;
 import org.jetlinks.core.device.DeviceOperator;
 import org.jetlinks.community.device.entity.DeviceInstanceEntity;
 import org.jetlinks.community.device.entity.DeviceProductEntity;
@@ -141,6 +142,7 @@ public class DeviceDetail {
                                             .stream()
                                             .map(ConfigPropertyMetadata::getProperty)
                                             .collect(Collectors.toList()))
+                         .defaultIfEmpty(Values.of(Collections.emptyMap()))
             )
             .doOnNext(tp -> {
                 setOnlineTime(tp.getT2());
