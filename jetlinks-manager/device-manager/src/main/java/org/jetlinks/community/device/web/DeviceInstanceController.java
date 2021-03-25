@@ -231,6 +231,15 @@ public class DeviceInstanceController implements
         return deviceDataService.queryEachOneProperties(deviceId, QueryParamEntity.of());
     }
 
+    //获取设备全部最新属性
+    @GetMapping("/{deviceId:.+}/properties")
+    @QueryAction
+    @QueryNoPagingOperation(summary = "按条件查询指定ID设备的全部属性")
+    public Flux<DeviceProperty> getDeviceLatestProperties(@PathVariable @Parameter(description = "设备ID") String deviceId,
+                                                          @Parameter(hidden = true) QueryParamEntity queryParamEntity) {
+        return deviceDataService.queryEachProperties(deviceId, queryParamEntity);
+    }
+
     //获取设备指定的最新属性
     @GetMapping("/{deviceId:.+}/property/{property:.+}")
     @QueryAction
@@ -737,5 +746,40 @@ public class DeviceInstanceController implements
                     });
             });
     }
+
+    //更新设备物模型
+    @PutMapping(value = "/{id}/metadata")
+    @SaveAction
+    @Operation(summary = "更新物模型")
+    public Mono<Void> updateMetadata(@PathVariable String id,
+                                     @RequestBody Mono<String> metadata) {
+        return metadata
+            .flatMap(metadata_ -> service
+                .createUpdate()
+                .set(DeviceInstanceEntity::getDeriveMetadata, metadata_)
+                .where(DeviceInstanceEntity::getId, id)
+                .execute()
+                .then(registry.getDevice(id))
+                .flatMap(device -> device.updateMetadata(metadata_)))
+            .then();
+    }
+
+    //重置设备物模型
+    @DeleteMapping(value = "/{id}/metadata")
+    @SaveAction
+    @Operation(summary = "重置物模型")
+    public Mono<Void> resetMetadata(@PathVariable String id) {
+
+        return registry
+            .getDevice(id)
+            .flatMap(DeviceOperator::resetMetadata)
+            .then(service
+                      .createUpdate()
+                      .setNull(DeviceInstanceEntity::getDeriveMetadata)
+                      .where(DeviceInstanceEntity::getId, id)
+                      .execute()
+                      .then());
+    }
+
 
 }
